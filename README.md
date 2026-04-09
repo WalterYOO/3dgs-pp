@@ -7,6 +7,7 @@
 - **懒加载读取**：无需一次性加载整个文件，支持超大文件（>10GB）处理
 - **终端浏览**：交互式查看高斯点数据，支持翻页、搜索、跳转
 - **空间分块**：按 X/Y/Z 方向分割点云，导出为多个 PLY 文件
+- **高斯椭球下采样**：支持多种采样方法（均匀、不透明度、随机、体素）
 
 ## 安装
 
@@ -54,6 +55,25 @@ uv run 3dgs-pp split --output-dir ./blocks "4*4*4" scene.ply
 
 注意：分块规格需要用引号括起来，避免 shell 解释 `*` 通配符。
 
+### 4. 高斯椭球下采样 (`downsample`)
+
+```bash
+# 按比例下采样（保留 50%）
+uv run 3dgs-pp downsample --ratio 0.5 scene.ply
+
+# 按数量下采样（保留 10000 个）
+uv run 3dgs-pp downsample --count 10000 scene.ply
+
+# 指定采样方法和输出文件
+uv run 3dgs-pp downsample --ratio 0.3 --method opacity --output scene_small.ply scene.ply
+```
+
+**采样方法**：
+- `uniform`：均匀采样（默认，简单高效）
+- `opacity`：基于不透明度采样（优先保留重要的点）
+- `random`：随机采样（可指定 `--seed` 保证可复现）
+- `voxel`：体素聚类采样（保持空间分布均匀性）
+
 ## 生成测试数据
 
 ```bash
@@ -82,10 +102,12 @@ uv run python -m threeds_pp.test_util test_data/sample.ply 10000
 │   ├── cli/
 │   │   ├── info.py         # info 命令
 │   │   ├── view.py         # view 命令
-│   │   └── split.py        # split 命令
+│   │   ├── split.py        # split 命令
+│   │   └── downsample.py   # downsample 命令
 │   ├── core/
 │   │   ├── bounds.py       # 包围盒计算
-│   │   └── partition.py    # 空间分块
+│   │   ├── partition.py    # 空间分块
+│   │   └── downsampler.py  # 下采样算法
 │   └── main.py
 ├── pyproject.toml
 └── README.md
