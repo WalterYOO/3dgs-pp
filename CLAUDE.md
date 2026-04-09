@@ -35,6 +35,8 @@ source .venv/bin/activate  # Linux/macOS
 
 ### 提交规范
 - 提交信息使用英文
+- 不要自动提交 git，只有用户明确要求时才提交
+- 不要自动推送到 GitHub，只有用户明确要求时才推送
 
 ## 项目结构
 

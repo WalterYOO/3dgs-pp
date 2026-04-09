@@ -43,14 +43,13 @@
 
 #### 2.2.1 展示模式
 - 默认展示核心属性：索引、x/y/z 坐标、opacity
-- 支持展开查看更多属性（f_dc、f_rest_0-2、scale、rot）
+- 支持展开查看更多属性（f_dc、scale、rot）
 - 支持自定义选择展示的属性列
 - 数值格式化：浮点数保留 6 位小数
 
 **展开模式显示属性：**
 - 索引、x、y、z、opacity
 - f_dc_0, f_dc_1, f_dc_2
-- f_rest_0, f_rest_1, f_rest_2（仅前 3 个）
 - scale_0, scale_1, scale_2
 - rot_0, rot_1, rot_2, rot_3
 

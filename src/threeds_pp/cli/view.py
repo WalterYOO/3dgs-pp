@@ -13,12 +13,10 @@ from ..ply import LazyPLYReader
 
 # Core properties to show by default
 CORE_PROPERTIES = ['x', 'y', 'z', 'opacity']
-# All properties
-ALL_PROPERTIES = [
-    'x', 'y', 'z',
+# Expanded properties (show when toggled)
+EXPANDED_PROPERTIES = [
+    'x', 'y', 'z', 'opacity',
     'f_dc_0', 'f_dc_1', 'f_dc_2',
-    *[f'f_rest_{i}' for i in range(45)],
-    'opacity',
     'scale_0', 'scale_1', 'scale_2',
     'rot_0', 'rot_1', 'rot_2', 'rot_3'
 ]
@@ -82,9 +80,10 @@ def run_view(ply_file: str, page_size: int = 20, show_full: bool = False):
                 # Determine which properties to show
                 display_props = []
                 if show_full_props:
-                    # Show all properties in order
-                    for p in prop_names:
-                        display_props.append(p)
+                    # Show expanded properties (excluding f_rest)
+                    for p in EXPANDED_PROPERTIES:
+                        if p in prop_names:
+                            display_props.append(p)
                 else:
                     # Show only core properties
                     for p in CORE_PROPERTIES:
