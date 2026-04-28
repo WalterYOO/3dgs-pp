@@ -8,6 +8,7 @@ from .cli.info import run_info
 from .cli.view import run_view
 from .cli.split import run_split
 from .cli.downsample import run_downsample
+from .cli.stat import run_stat
 
 
 def main():
@@ -71,6 +72,16 @@ Examples:
     downsample_parser.add_argument("--output", "-o", help="Output file path")
     downsample_parser.add_argument("--seed", type=int, help="Random seed (for random method)")
 
+    # Stat command
+    stat_parser = subparsers.add_parser("stat", help="Statistics overview of PLY properties")
+    stat_parser.add_argument("ply_file", help="Path to PLY file")
+    stat_parser.add_argument("--attr", default=None, help="Default property to view (default: first numeric)")
+    stat_parser.add_argument("--all", action="store_true", help="Show all properties comparison and exit")
+    stat_parser.add_argument("--plot", action="store_true", help="Generate distribution chart(s) and exit")
+    stat_parser.add_argument("--output-dir", "-o", default=None, help="Output directory for charts and saved stats")
+    stat_parser.add_argument("--type", default="histogram", choices=["histogram", "box", "violin"],
+                             help="Chart type (default: histogram)")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -91,6 +102,15 @@ Examples:
             method=args.method,
             output=args.output,
             seed=args.seed
+        )
+    elif args.command == "stat":
+        return run_stat(
+            args.ply_file,
+            attr=args.attr,
+            show_all=args.all,
+            plot=args.plot,
+            output_dir=args.output_dir,
+            chart_type=args.type,
         )
 
     return 0

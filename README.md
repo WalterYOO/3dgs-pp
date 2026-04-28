@@ -8,6 +8,7 @@
 - **终端浏览**：交互式查看高斯点数据，支持翻页、搜索、跳转
 - **空间分块**：按 X/Y/Z 方向分割点云，导出为多个 PLY 文件
 - **高斯椭球下采样**：支持多种采样方法（均匀、不透明度、随机、体素）
+- **属性统计分析**：支持统计、分布图绘制、快捷键切换查看
 
 ## 安装
 
@@ -75,6 +76,43 @@ uv run 3dgs-pp downsample --ratio 0.3 --method opacity --output scene_small.ply 
 - `voxel`：体素聚类采样（保持空间分布均匀性）
 - `merge`：高斯椭球合并（平滑合并临近高斯，保持视觉质量）
 
+### 5. 属性统计分析 (`stat`)
+
+```bash
+# 交互式统计模式（默认查看第一个数值属性）
+uv run 3dgs-pp stat scene.ply
+
+# 指定默认查看的属性
+uv run 3dgs-pp stat --attr opacity scene.ply
+
+# 非交互模式：展示所有核心属性统计对比
+uv run 3dgs-pp stat --all scene.ply
+
+# 绘制指定属性的分布图并保存
+uv run 3dgs-pp stat --attr opacity --plot scene.ply
+
+# 批量绘制核心属性箱线图
+uv run 3dgs-pp stat --all --plot --type box --output-dir ./charts scene.ply
+```
+
+**交互控制**：
+- `a` / `←`：上一个属性
+- `d` / `→`：下一个属性
+- `s`：切换单属性详细 / 多属性对比模式
+- `f`：全屏查看所有属性统计对比
+- `o`：保存当前统计信息到文本文件
+- `p`：绘制当前属性分布图
+- `P`（Shift+p）：批量绘制核心属性分布图
+- `q`：退出
+- `?`：显示帮助
+
+**统计指标**：Min、Max、Mean、Std、Median、Q1/Q2/Q3、5%/10%/20%/50%/90%/95% 分位数、偏度、峰度
+
+**图表类型**：
+- `histogram`：直方图 + KDE 曲线（默认）
+- `box`：箱线图
+- `violin`：小提琴图
+
 ## 生成测试数据
 
 ```bash
@@ -104,10 +142,12 @@ uv run python -m threeds_pp.test_util test_data/sample.ply 10000
 │   │   ├── info.py         # info 命令
 │   │   ├── view.py         # view 命令
 │   │   ├── split.py        # split 命令
+│   │   ├── stat.py         # stat 命令
 │   │   └── downsample.py   # downsample 命令
 │   ├── core/
 │   │   ├── bounds.py       # 包围盒计算
 │   │   ├── partition.py    # 空间分块
+│   │   ├── stats.py        # 统计分析
 │   │   └── downsampler.py  # 下采样算法
 │   └── main.py
 ├── pyproject.toml
