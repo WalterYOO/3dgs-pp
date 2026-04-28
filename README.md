@@ -7,6 +7,7 @@
 - **懒加载读取**：无需一次性加载整个文件，支持超大文件（>10GB）处理
 - **终端浏览**：交互式查看高斯点数据，支持翻页、搜索、跳转
 - **空间分块**：按 X/Y/Z 方向分割点云，导出为多个 PLY 文件
+- **高斯椭球过滤**：按数值、百分位、范围条件过滤点云，支持多条件组合
 - **高斯椭球下采样**：支持多种采样方法（均匀、不透明度、随机、体素）
 - **属性统计分析**：支持统计、分布图绘制、快捷键切换查看
 
@@ -56,7 +57,64 @@ uv run 3dgs-pp split --output-dir ./blocks "4*4*4" scene.ply
 
 注意：分块规格需要用引号括起来，避免 shell 解释 `*` 通配符。
 
-### 4. 高斯椭球下采样 (`downsample`)
+注意：分块规格需要用引号括起来，避免 shell 解释 `*` 通配符。
+
+### 4. 高斯椭球过滤 (`filter`)
+
+```bash
+# 过滤掉 opacity 低于 5% 分位数的椭球
+uv run 3dgs-pp filter --filter "opacity<P5" scene.ply
+
+# 多条件过滤（OR 逻辑：满足任一即过滤）
+uv run 3dgs-pp filter --filter "opacity>0.1" --filter "scale_0<P10" scene.ply
+
+# 多条件 AND 逻辑（同时满足才过滤）
+uv run 3dgs-pp filter --and --filter "opacity<0.01" --filter "z>100" scene.ply
+
+# 保留模式：仅保留 opacity > P5 的椭球
+uv run 3dgs-pp filter --keep --filter "opacity>P5" scene.ply
+
+# 范围过滤：过滤掉 x 不在 [-50, 50] 范围内的椭球
+uv run 3dgs-pp filter --filter "x!~[-50,50]" scene.ply
+
+# 指定输出文件
+uv run 3dgs-pp filter --filter "opacity<P5" --output result.ply scene.ply
+
+# 交互模式
+uv run 3dgs-pp filter --interactive scene.ply
+```
+
+**过滤表达式格式**：
+
+| 操作符 | 示例 | 说明 |
+|--------|------|------|
+| `>`, `>=`, `<`, `<=`, `==`, `!=` | `opacity>0.1`, `x<=0` | 数值比较 |
+| `>P`, `>=P`, `<P`, `<=P` | `opacity<P5`, `scale_0>=P90` | 百分位比较 |
+| `~` | `x~[-10,10]` | 介于数值范围（含边界） |
+| `!~` | `x!~[-10,10]` | 不介于数值范围 |
+| `~P` | `opacity~P[5,95]` | 介于百分位范围 |
+| `!~P` | `z!~P[10,90]` | 不介于百分位范围 |
+
+**选项**：
+- `--filter` / `-f`：过滤表达式（可重复指定多次）
+- `--and`：多条件使用 AND 逻辑（默认 OR）
+- `--keep`：反转逻辑，保留匹配的点而非丢弃
+- `--output` / `-o`：输出文件路径（默认：`{原文件名}_filtered.ply`）
+- `--interactive` / `-i`：交互模式
+
+**交互控制**：
+- `Enter`：输入过滤表达式
+- `Esc`：删除最后一个过滤条件
+- `a` / `←`：上一个属性
+- `d` / `→`：下一个属性
+- `w`：切换 AND/OR 逻辑
+- `k`：切换保留/丢弃模式
+- `c`：清除所有过滤条件
+- `s`：保存过滤结果
+- `q`：退出
+- `?`：显示帮助
+
+### 5. 高斯椭球下采样 (`downsample`)
 
 ```bash
 # 按比例下采样（保留 50%）
@@ -76,7 +134,7 @@ uv run 3dgs-pp downsample --ratio 0.3 --method opacity --output scene_small.ply 
 - `voxel`：体素聚类采样（保持空间分布均匀性）
 - `merge`：高斯椭球合并（平滑合并临近高斯，保持视觉质量）
 
-### 5. 属性统计分析 (`stat`)
+### 6. 属性统计分析 (`stat`)
 
 ```bash
 # 交互式统计模式（默认查看第一个数值属性）
@@ -143,11 +201,13 @@ uv run python -m threeds_pp.test_util test_data/sample.ply 10000
 │   │   ├── view.py         # view 命令
 │   │   ├── split.py        # split 命令
 │   │   ├── stat.py         # stat 命令
+│   │   ├── filter.py       # filter 命令
 │   │   └── downsample.py   # downsample 命令
 │   ├── core/
 │   │   ├── bounds.py       # 包围盒计算
 │   │   ├── partition.py    # 空间分块
 │   │   ├── stats.py        # 统计分析
+│   │   ├── filter.py       # 高斯椭球过滤
 │   │   └── downsampler.py  # 下采样算法
 │   └── main.py
 ├── pyproject.toml

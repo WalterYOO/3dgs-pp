@@ -9,6 +9,7 @@ from .cli.view import run_view
 from .cli.split import run_split
 from .cli.downsample import run_downsample
 from .cli.stat import run_stat
+from .cli.filter import run_filter
 
 
 def main():
@@ -28,6 +29,13 @@ Examples:
   # Split into blocks
   3dgs-pp split "2*3*2" scene.ply
   3dgs-pp split --output-dir ./blocks "4*4*4" scene.ply
+
+  # Filter by property values
+  3dgs-pp filter --filter "opacity<P5" scene.ply
+  3dgs-pp filter --filter "opacity>0.1" --filter "scale_0<P10" scene.ply
+  3dgs-pp filter --and --filter "opacity<0.01" --filter "z>100" scene.ply
+  3dgs-pp filter --keep --filter "opacity>P5" scene.ply
+  3dgs-pp filter -i scene.ply
 
   # Downsample (retain 50%%)
   3dgs-pp downsample --ratio 0.5 scene.ply
@@ -82,6 +90,19 @@ Examples:
     stat_parser.add_argument("--type", default="histogram", choices=["histogram", "box", "violin"],
                              help="Chart type (default: histogram)")
 
+    # Filter command
+    filter_parser = subparsers.add_parser("filter", help="Filter Gaussian ellipsoids based on conditions")
+    filter_parser.add_argument("ply_file", help="Path to PLY file")
+    filter_parser.add_argument("--filter", "-f", action="append", metavar="EXPR",
+                               help="Filter expression, e.g. 'opacity<0.1' (repeatable)")
+    filter_parser.add_argument("--and", dest="and_logic", action="store_true",
+                               help="Use AND logic for combining conditions")
+    filter_parser.add_argument("--keep", action="store_true",
+                               help="Invert: keep matching, discard others")
+    filter_parser.add_argument("--output", "-o", help="Output file path")
+    filter_parser.add_argument("--interactive", "-i", action="store_true",
+                               help="Enter interactive filter mode")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -102,6 +123,15 @@ Examples:
             method=args.method,
             output=args.output,
             seed=args.seed
+        )
+    elif args.command == "filter":
+        return run_filter(
+            args.ply_file,
+            filters=args.filter or [],
+            and_logic=args.and_logic,
+            keep=args.keep,
+            output=args.output,
+            interactive=args.interactive,
         )
     elif args.command == "stat":
         return run_stat(
