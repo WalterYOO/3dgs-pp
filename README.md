@@ -73,6 +73,7 @@ uv run 3dgs-pp downsample --ratio 0.3 --method opacity --output scene_small.ply 
 - `opacity`：基于不透明度采样（优先保留重要的点）
 - `random`：随机采样（可指定 `--seed` 保证可复现）
 - `voxel`：体素聚类采样（保持空间分布均匀性）
+- `merge`：高斯椭球合并（平滑合并临近高斯，保持视觉质量）
 
 ## 生成测试数据
 

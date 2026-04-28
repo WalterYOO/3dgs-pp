@@ -61,11 +61,18 @@ def run_downsample(ply_file: str,
             console.print()
 
             # Run sampling
-            console.print("[bold]Step 1/2:[/bold] Selecting points...")
+            if method == 'merge':
+                console.print("[bold]Step 1/2:[/bold] Merging Gaussians...")
+            else:
+                console.print("[bold]Step 1/2:[/bold] Selecting points...")
             result = downsampler.sample(method=method, ratio=ratio, count=count, seed=seed)
 
-            console.print(f"  Selected {result.actual_count:,} points "
-                        f"({result.actual_count / total_count:.2%} of original)")
+            if method == 'merge':
+                console.print(f"  Merged into {result.actual_count:,} Gaussians "
+                            f"({result.actual_count / total_count:.2%} of original)")
+            else:
+                console.print(f"  Selected {result.actual_count:,} points "
+                            f"({result.actual_count / total_count:.2%} of original)")
             console.print()
 
             # Write output

@@ -66,7 +66,7 @@ Examples:
     group.add_argument("--ratio", type=float, help="Retention ratio (0 < ratio <= 1, e.g., 0.5 for 50%%)")
     group.add_argument("--count", type=int, help="Number of points to retain")
     downsample_parser.add_argument("--method", default="uniform",
-                                   choices=["uniform", "opacity", "random", "voxel"],
+                                   choices=["uniform", "opacity", "random", "voxel", "merge"],
                                    help="Sampling method (default: uniform)")
     downsample_parser.add_argument("--output", "-o", help="Output file path")
     downsample_parser.add_argument("--seed", type=int, help="Random seed (for random method)")
