@@ -23,6 +23,16 @@ _PCT_ATTR_MAP = {
     95: "pct_95",
 }
 
+# Derived (indirect) property names computed from scale_0/1/2
+DERIVED_PROPERTIES = [
+    "volume",
+    "longest_axis",
+    "shortest_axis",
+    "sphericity",
+    "disceness",
+    "rodness",
+]
+
 # Regex for parsing filter expressions
 _FILTER_RE = re.compile(
     r"^(?P<attr>[a-zA-Z_][a-zA-Z0-9_]*)"
@@ -31,6 +41,56 @@ _FILTER_RE = re.compile(
 )
 
 _RANGE_RE = re.compile(r"\[([-\d.]+),([-\d.]+)\]$")
+
+
+def compute_derived_properties(
+    scale_0: np.ndarray,
+    scale_1: np.ndarray,
+    scale_2: np.ndarray,
+    props: List[str],
+) -> Dict[str, np.ndarray]:
+    """Compute derived (indirect) property arrays from scale values.
+
+    The scale_* values in 3DGS PLY are log-scales. Actual half-axis lengths
+    are exp(scale_0), exp(scale_1), exp(scale_2). We sort them to l1<=l2<=l3
+    for shape-ratio calculations.
+    """
+    result: Dict[str, np.ndarray] = {}
+
+    l0 = np.exp(scale_0)
+    l1 = np.exp(scale_1)
+    l2 = np.exp(scale_2)
+
+    if "sphericity" in props or "disceness" in props or "rodness" in props:
+        sorted_axes = np.stack([l0, l1, l2], axis=-1)
+        np.sort(sorted_axes, axis=-1)
+
+    if "volume" in props:
+        result["volume"] = l0 * l1 * l2
+    if "longest_axis" in props:
+        result["longest_axis"] = np.maximum(l0, np.maximum(l1, l2))
+    if "shortest_axis" in props:
+        result["shortest_axis"] = np.minimum(l0, np.minimum(l1, l2))
+    if "sphericity" in props:
+        result["sphericity"] = np.divide(
+            sorted_axes[..., 0], sorted_axes[..., 2],
+            out=np.zeros_like(sorted_axes[..., 0]),
+            where=sorted_axes[..., 2] > 0,
+        )
+    if "disceness" in props:
+        result["disceness"] = np.divide(
+            sorted_axes[..., 0], sorted_axes[..., 1],
+            out=np.zeros_like(sorted_axes[..., 0]),
+            where=sorted_axes[..., 1] > 0,
+        )
+    if "rodness" in props:
+        result["rodness"] = np.divide(
+            sorted_axes[..., 1], sorted_axes[..., 2],
+            out=np.zeros_like(sorted_axes[..., 1]),
+            where=sorted_axes[..., 2] > 0,
+        )
+
+    return result
 
 
 @dataclass(frozen=True)
@@ -220,6 +280,53 @@ def _build_filter_comment(
     return f"logic={logic_str}{keep_str}: {sep.join(parts)}"
 
 
+def _compute_stats_from_array(
+    property_name: str,
+    column: np.ndarray,
+) -> PropertyStats:
+    """Compute PropertyStats from a numpy array (used for derived properties)."""
+    try:
+        from scipy import stats as scipy_stats
+    except ImportError:
+        scipy_stats = None
+
+    n = len(column)
+    min_val = float(np.min(column))
+    max_val = float(np.max(column))
+    mean_val = float(np.mean(column, dtype=np.float64))
+    std_val = float(np.std(column, dtype=np.float64))
+
+    percentiles = np.percentile(column, [5, 10, 20, 25, 50, 75, 90, 95])
+
+    if n > 2 and scipy_stats is not None:
+        skew = float(scipy_stats.skew(column, bias=False))
+        kurt = float(scipy_stats.kurtosis(column, bias=False)) if n > 3 else 0.0
+    else:
+        skew = 0.0
+        kurt = 0.0
+
+    return PropertyStats(
+        property_name=property_name,
+        count=n,
+        min_val=min_val,
+        max_val=max_val,
+        mean=mean_val,
+        std=std_val,
+        median=float(percentiles[4]),
+        q1=float(percentiles[3]),
+        q2=float(percentiles[4]),
+        q3=float(percentiles[5]),
+        pct_5=float(percentiles[0]),
+        pct_10=float(percentiles[1]),
+        pct_20=float(percentiles[2]),
+        pct_50=float(percentiles[4]),
+        pct_90=float(percentiles[6]),
+        pct_95=float(percentiles[7]),
+        skewness=skew,
+        kurtosis=kurt,
+    )
+
+
 class FilterEngine:
     """Core filtering engine: parse expressions, build masks, apply to PLY data."""
 
@@ -228,11 +335,53 @@ class FilterEngine:
             raise FileNotFoundError(f"PLY file not found: {ply_file}")
         self.analyzer = StatsAnalyzer(ply_file)
         self._stats_cache: Dict[str, PropertyStats] = {}
+        self._derived_cache: Dict[str, np.ndarray] = {}
+
+    def get_all_properties(self) -> List[str]:
+        """Return all available properties including derived ones."""
+        return self.analyzer.get_numeric_properties() + list(DERIVED_PROPERTIES)
 
     def _get_stats(self, prop: str) -> PropertyStats:
+        """Get stats for a property, computing derived ones on-demand."""
         if prop not in self._stats_cache:
-            self._stats_cache[prop] = self.analyzer.compute_stats(prop)
+            if prop in DERIVED_PROPERTIES:
+                col = self._get_derived_column(prop)
+                self._stats_cache[prop] = _compute_stats_from_array(prop, col)
+            else:
+                self._stats_cache[prop] = self.analyzer.compute_stats(prop)
         return self._stats_cache[prop]
+
+    def _get_derived_column(self, prop: str) -> np.ndarray:
+        """Get or compute a single derived property column (cached)."""
+        if prop not in self._derived_cache:
+            scale_0 = self.analyzer.read_column("scale_0")
+            scale_1 = self.analyzer.read_column("scale_1")
+            scale_2 = self.analyzer.read_column("scale_2")
+            # Batch-compute all needed derived props that aren't already cached
+            missing = [p for p in DERIVED_PROPERTIES
+                       if p not in self._derived_cache
+                       and p == prop]
+            if missing:
+                computed = compute_derived_properties(
+                    scale_0, scale_1, scale_2, missing
+                )
+                self._derived_cache.update(computed)
+        return self._derived_cache[prop]
+
+    def _get_derived_columns_batch(
+        self, derived_needed: List[str]
+    ) -> Dict[str, np.ndarray]:
+        """Compute all needed derived columns in one pass."""
+        if not derived_needed:
+            return {}
+        missing = [p for p in derived_needed if p not in self._derived_cache]
+        if missing:
+            scale_0 = self.analyzer.read_column("scale_0")
+            scale_1 = self.analyzer.read_column("scale_1")
+            scale_2 = self.analyzer.read_column("scale_2")
+            computed = compute_derived_properties(scale_0, scale_1, scale_2, missing)
+            self._derived_cache.update(computed)
+        return {p: self._derived_cache[p] for p in derived_needed}
 
     def build_mask(
         self,
@@ -254,18 +403,22 @@ class FilterEngine:
             total = self.analyzer.vertex_elem.count
             return np.zeros(total, dtype=bool), []
 
-        # Collect unique properties and load columns
+        # Collect unique properties needed
         needed_props = list(set(c.property_name for c in conditions))
+        native_props = [p for p in needed_props if p not in DERIVED_PROPERTIES]
+        derived_props = [p for p in needed_props if p in DERIVED_PROPERTIES]
+
         columns: Dict[str, np.ndarray] = {}
-        for prop in needed_props:
+        for prop in native_props:
             columns[prop] = self.analyzer.read_column(prop)
+        columns.update(self._get_derived_columns_batch(derived_props))
 
         # Compute stats for properties that need percentile lookups
         for prop in needed_props:
             if not self._needs_percentile(prop, conditions):
                 continue
             if prop not in self._stats_cache:
-                self._stats_cache[prop] = self.analyzer.compute_stats(prop)
+                self._get_stats(prop)
 
         # Evaluate each condition
         masks = []

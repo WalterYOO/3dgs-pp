@@ -19,6 +19,7 @@ from rich.table import Table
 from rich.text import Text
 
 from ..core.filter import (
+    DERIVED_PROPERTIES,
     FilterCondition,
     FilterEngine,
     _build_filter_comment,
@@ -133,7 +134,7 @@ def _run_non_interactive(
         logic = "and" if and_logic else "or"
 
         # Parse expressions
-        all_properties = engine.analyzer.get_numeric_properties()
+        all_properties = engine.get_all_properties()
         conditions: List[FilterCondition] = []
         for expr in filters:
             try:
@@ -240,7 +241,7 @@ def _run_interactive(
     try:
         engine = FilterEngine(ply_file)
         total_points = engine.analyzer.vertex_elem.count
-        all_properties = engine.analyzer.get_numeric_properties()
+        all_properties = engine.get_all_properties()
 
         if not all_properties:
             console.print("[red]Error:[/red] No numeric properties found")
@@ -276,7 +277,7 @@ def _run_interactive(
             # Update stats cache for current property
             current_prop = all_properties[prop_index]
             if current_prop not in stats_cache:
-                stats_cache[current_prop] = engine.analyzer.compute_stats(current_prop)
+                stats_cache[current_prop] = engine._get_stats(current_prop)
 
             ch = _get_key()
             if not ch:
@@ -453,7 +454,7 @@ def _render_prop_stats(
     table.add_column("cyan")
     table.add_column("right", style="green")
 
-    table.add_row("Property:", stats.property_name)
+    table.add_row("Property:", f"{stats.property_name} (derived)" if stats.property_name in DERIVED_PROPERTIES else stats.property_name)
     table.add_row("Min:", _format_val(stats.min_val))
     table.add_row("Max:", _format_val(stats.max_val))
     table.add_row("Mean:", _format_val(stats.mean))

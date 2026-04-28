@@ -80,6 +80,11 @@ uv run 3dgs-pp filter --filter "x!~[-50,50]" scene.ply
 # 指定输出文件
 uv run 3dgs-pp filter --filter "opacity<P5" --output result.ply scene.ply
 
+# 使用派生属性过滤
+uv run 3dgs-pp filter --filter "volume<P5" scene.ply
+uv run 3dgs-pp filter --filter "sphericity>0.9" scene.ply
+uv run 3dgs-pp filter --and --filter "volume<P10" --filter "disceness<0.2" scene.ply
+
 # 交互模式
 uv run 3dgs-pp filter --interactive scene.ply
 ```
@@ -94,6 +99,19 @@ uv run 3dgs-pp filter --interactive scene.ply
 | `!~` | `x!~[-10,10]` | 不介于数值范围 |
 | `~P` | `opacity~P[5,95]` | 介于百分位范围 |
 | `!~P` | `z!~P[10,90]` | 不介于百分位范围 |
+
+**派生属性**（间接参数，基于 `scale_0/1/2` 实时计算）：
+
+| 属性名 | 说明 | 计算方式 |
+|--------|------|----------|
+| `volume` | 椭球体积（成正比） | `exp(s0)*exp(s1)*exp(s2)` |
+| `longest_axis` | 最长半轴长度 | `max(exp(s0), exp(s1), exp(s2))` |
+| `shortest_axis` | 最短半轴长度 | `min(exp(s0), exp(s1), exp(s2))` |
+| `sphericity` | 接近圆球程度，[0,1] | 排序后 `最短/最长` 半轴比 |
+| `disceness` | 接近圆盘程度，[0,1] | 排序后 `最短/中位` 半轴比 |
+| `rodness` | 接近棒针程度，[0,1] | 排序后 `中位/最长` 半轴比 |
+
+派生属性可以与原始属性（如 `opacity`, `x`, `y`, `z`）在过滤表达式中自由组合。
 
 **选项**：
 - `--filter` / `-f`：过滤表达式（可重复指定多次）

@@ -4,7 +4,7 @@ from .bounds import Bounds
 from .partition import Partitioner
 from .downsampler import Downsampler, DownsampleResult
 from .stats import StatsAnalyzer, PropertyStats
-from .filter import FilterEngine, parse_filter_expression
+from .filter import DERIVED_PROPERTIES, FilterEngine, parse_filter_expression
 
 __all__ = [
     "Bounds",
@@ -13,6 +13,7 @@ __all__ = [
     "DownsampleResult",
     "StatsAnalyzer",
     "PropertyStats",
+    "DERIVED_PROPERTIES",
     "FilterEngine",
     "parse_filter_expression",
 ]
