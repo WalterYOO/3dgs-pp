@@ -10,6 +10,7 @@
 - **高斯椭球过滤**：按数值、百分位、范围条件过滤点云，支持多条件组合
 - **高斯椭球下采样**：支持多种采样方法（均匀、不透明度、随机、体素）
 - **属性统计分析**：支持统计、分布图绘制、快捷键切换查看
+- **坐标平移**：支持具体数值和统计量关键字，各轴独立或统一定义
 
 ## 安装
 
@@ -54,8 +55,6 @@ uv run 3dgs-pp split --output-dir ./blocks "4*4*4" scene.ply
 ```
 
 分块规格格式：`Nx*Ny*Nz`，例如 `2*3*2` 表示 X 方向 2 块，Y 方向 3 块，Z 方向 2 块。
-
-注意：分块规格需要用引号括起来，避免 shell 解释 `*` 通配符。
 
 注意：分块规格需要用引号括起来，避免 shell 解释 `*` 通配符。
 
@@ -189,6 +188,55 @@ uv run 3dgs-pp stat --all --plot --type box --output-dir ./charts scene.ply
 - `box`：箱线图
 - `violin`：小提琴图
 
+### 7. 坐标平移 (`translate`)
+
+```bash
+# 具体数值平移（X +10，Y -5，Z 不变）
+uv run 3dgs-pp translate --x 10 --y -5 scene.ply
+
+# 所有轴统一平移
+uv run 3dgs-pp translate --all mean scene.ply
+
+# 各轴分别使用统计量
+uv run 3dgs-pp translate --x mean --y median --z center scene.ply
+
+# 混合模式（数值 + 统计量）
+uv run 3dgs-pp translate --x 10 --y mean --z P50 scene.ply
+
+# 指定输出文件
+uv run 3dgs-pp translate --all mean --output centered.ply scene.ply
+
+# 交互模式
+uv run 3dgs-pp translate --interactive scene.ply
+```
+
+**平移量指定方式**：
+
+| 方式 | 示例 | 说明 |
+|------|------|------|
+| 具体数值 | `--x 10` | 直接加上该数值 |
+| `mean` | `--x mean` | 减去该轴均值（数据中心化） |
+| `median` | `--x median` | 减去该轴中值 |
+| `center` | `--x center` | 减去包围盒中心 `(min+max)/2` |
+| `P<N>` | `--x P50` | 减去该轴 N% 分位数 |
+
+**选项**：
+- `--all VAL`：所有轴统一应用同一平移量（与 `--x/--y/--z` 互斥）
+- `--x VAL` / `--y VAL` / `--z VAL`：各轴独立设定，未指定轴默认为 0
+- `--output` / `-o`：输出文件路径（默认：`{原文件名}_translated.ply`）
+- `--interactive` / `-i`：交互模式
+- 数值与统计量关键字可在 `--x/--y/--z` 中自由混合使用
+
+**交互控制**：
+- `x` / `y` / `z`：切换操作轴
+- `m` / `d` / `c`：设为 mean / median / center
+- `p`：输入百分比分位数
+- `n`：输入具体数值
+- `a`：当前轴设置应用到所有轴
+- `r`：重置所有偏移
+- `Enter`：确认并写入文件
+- `q`：退出
+
 ## 生成测试数据
 
 ```bash
@@ -220,13 +268,15 @@ uv run python -m threeds_pp.test_util test_data/sample.ply 10000
 │   │   ├── split.py        # split 命令
 │   │   ├── stat.py         # stat 命令
 │   │   ├── filter.py       # filter 命令
-│   │   └── downsample.py   # downsample 命令
+│   │   ├── downsample.py   # downsample 命令
+│   │   └── translate.py    # translate 命令
 │   ├── core/
 │   │   ├── bounds.py       # 包围盒计算
 │   │   ├── partition.py    # 空间分块
 │   │   ├── stats.py        # 统计分析
 │   │   ├── filter.py       # 高斯椭球过滤
-│   │   └── downsampler.py  # 下采样算法
+│   │   ├── downsampler.py  # 下采样算法
+│   │   └── translate.py    # 坐标平移
 │   └── main.py
 ├── pyproject.toml
 └── README.md

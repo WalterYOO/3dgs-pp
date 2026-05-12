@@ -10,6 +10,7 @@ from .cli.split import run_split
 from .cli.downsample import run_downsample
 from .cli.stat import run_stat
 from .cli.filter import run_filter
+from .cli.translate import run_translate
 
 
 def main():
@@ -45,6 +46,11 @@ Examples:
 
   # Downsample with specific method
   3dgs-pp downsample --ratio 0.3 --method opacity --output scene_small.ply scene.ply
+
+  # Translate coordinates
+  3dgs-pp translate --x 10 --y -5 scene.ply
+  3dgs-pp translate --all mean scene.ply
+  3dgs-pp translate --x mean --y median --z center scene.ply
         """
     )
 
@@ -103,6 +109,18 @@ Examples:
     filter_parser.add_argument("--interactive", "-i", action="store_true",
                                help="Enter interactive filter mode")
 
+    # Translate command
+    translate_parser = subparsers.add_parser("translate", help="Translate PLY coordinates")
+    translate_parser.add_argument("ply_file", help="Path to PLY file")
+    trans_group = translate_parser.add_mutually_exclusive_group()
+    trans_group.add_argument("--all", dest="all_val", help="Apply same translation to all axes (value, mean, median, center, P<N>)")
+    translate_parser.add_argument("--x", help="X axis translation (value, mean, median, center, P<N>)")
+    translate_parser.add_argument("--y", help="Y axis translation (value, mean, median, center, P<N>)")
+    translate_parser.add_argument("--z", help="Z axis translation (value, mean, median, center, P<N>)")
+    translate_parser.add_argument("--output", "-o", help="Output file path")
+    translate_parser.add_argument("--interactive", "-i", action="store_true",
+                                  help="Enter interactive translate mode")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -141,6 +159,16 @@ Examples:
             plot=args.plot,
             output_dir=args.output_dir,
             chart_type=args.type,
+        )
+    elif args.command == "translate":
+        return run_translate(
+            args.ply_file,
+            x=args.x,
+            y=args.y,
+            z=args.z,
+            all_val=args.all_val,
+            output=args.output,
+            interactive=args.interactive,
         )
 
     return 0

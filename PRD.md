@@ -14,6 +14,7 @@
 - 实现灵活的空间分块导出功能
 - 支持按条件过滤高斯椭球，清理异常或不需要数据
 - 支持高斯椭球下采样，减少模型复杂度
+- 支持坐标平移变换，方便点云对齐和中心化
 
 ## 2. 功能需求
 
@@ -518,6 +519,166 @@
 - 显示已处理/总点数
 - 显示采样方法和参数
 
+### 2.7 坐标平移
+
+**功能描述**：将 PLY 文件中所有高斯点的位置坐标（x, y, z）进行平移变换，支持指定具体数值或基于统计量（均值、中值、分位数、包围盒中心）自动计算平移量。
+
+**详细需求**：
+
+#### 2.7.1 平移量指定方式
+
+**方式一：具体数值**
+
+直接指定各轴的平移量（单位为原始坐标单位）：
+
+```bash
+3dgs-pp translate --x 10.5 --y -3.2 --z 0 scene.ply
+```
+
+平移后坐标：`x' = x + 10.5`, `y' = y - 3.2`, `z' = z + 0`
+
+**方式二：统计量自动计算**
+
+基于原始坐标分布的统计量计算平移量，支持以下关键字：
+
+| 关键字 | 计算方式 | 说明 |
+|--------|---------|------|
+| `mean` | 各轴坐标的算术平均值 | 将数据中心偏移至原点附近 |
+| `median` | 各轴坐标的中值（50% 分位数） | 对异常值更鲁棒的中心 |
+| `center` | `(min + max) / 2`，包围盒中心 | 基于空间范围的中心 |
+| `P<N>` | `<N>`% 分位数（如 `P10`、`P90`） | 按指定分位数计算偏移 |
+
+自动计算模式下的平移逻辑：`x' = x - 参考值_x`，即减去参考值使数据中心化。
+
+**方式三：统一平移量**
+
+通过 `--all` 标志对所有轴应用相同的平移量：
+
+```bash
+# 所有轴统一平移 10 个单位
+3dgs-pp translate --all 10 scene.ply
+
+# 所有轴统一减去 mean
+3dgs-pp translate --all mean scene.ply
+```
+
+#### 2.7.2 命令行接口
+
+```bash
+3dgs-pp translate [options] <ply_file>
+```
+
+参数：
+
+| 参数 | 说明 |
+|------|------|
+| `--x <val>` | X 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`） |
+| `--y <val>` | Y 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`） |
+| `--z <val>` | Z 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`） |
+| `--all <val>` | 所有轴统一平移量（数值或统计量关键字），与 `--x/--y/--z` 互斥 |
+| `--output FILE` | 输出文件路径（默认：`{原文件名}_translated.ply`） |
+
+**混合模式**：`--x/--y/--z` 可以分别指定不同的类型（数值或统计量），未指定的轴默认为不平移（平移量 = 0）：
+
+```bash
+# 仅 X 轴平移，YZ 不变
+3dgs-pp translate --x mean scene.ply
+
+# X 按具体值，Y 按均值，Z 按中值
+3dgs-pp translate --x 10 --y mean --z median scene.ply
+
+# 仅 Y 轴按包围盒中心平移
+3dgs-pp translate --y center scene.ply
+```
+
+#### 2.7.3 使用示例
+
+```bash
+# 将 X 坐标 +10，Y 坐标 -5，Z 不变
+3dgs-pp translate --x 10 --y -5 scene.ply
+
+# 以均值为中心，将所有坐标中心化
+3dgs-pp translate --all mean scene.ply
+
+# X 轴按均值、Y 轴按中值、Z 轴按包围盒中心分别平移
+3dgs-pp translate --x mean --y median --z center scene.ply
+
+# 以 50% 分位数（即中值）为中心
+3dgs-pp translate --all P50 scene.ply
+
+# 按 Y 轴 10% 分位数平移，使 10% 的数据位于原点下方
+3dgs-pp translate --y P10 scene.ply
+
+# 指定输出文件
+3dgs-pp translate --all mean --output centered.ply scene.ply
+```
+
+#### 2.7.4 输出结果
+
+- 生成新的 PLY 文件，仅修改 x, y, z 坐标值，其他属性保持不变
+- 在 PLY header 的注释中记录平移参数和实际平移量：
+
+```
+comment translate_x=mean(12.345678)
+comment translate_y=median(-8.901234)
+comment translate_z=center(25.678901)
+```
+
+- 控制台输出平移前后的统计对比：
+
+```
+平移参数:
+  X: mean (12.345678)
+  Y: median (-8.901234)
+  Z: center (25.678901)
+
+平移前包围盒:
+  X: [-123.456, 156.789]
+  Y: [-89.012, 167.890]
+  Z: [0.123, 112.345]
+
+平移后包围盒:
+  X: [-135.802, 144.443]
+  Y: [-79.111, 176.791]
+  Z: [-25.556, 86.666]
+
+总处理点数: 52,384,129
+处理时间: 1.23 秒
+输出文件: scene_translated.ply
+```
+
+#### 2.7.5 交互模式
+
+```bash
+3dgs-pp translate --interactive scene.ply
+```
+
+**交互流程**：
+
+1. 展示各轴坐标的统计概览（min, max, mean, median, center, 分位数）
+2. 用户选择平移参考方式（具体数值 / 统计量关键字）
+3. 预览平移前后的包围盒变化
+4. 确认或调整平移量
+5. 写入文件
+
+**交互控制**：
+
+- `x` / `y` / `z`：切换到对应轴的设置
+- `+` / `-`：微调平移量
+- `m`：切换当前轴为 mean
+- `d`：切换当前轴为 median
+- `c`：切换当前轴为 center
+- `p`：输入百分比分位数（如 P10）
+- `a`：应用统一平移量到所有轴
+- `Enter`：确认并写入文件
+- `q`：退出
+
+#### 2.7.6 性能要求
+
+- 统计量预计算时间：< 3 秒（1 亿点文件）
+- 坐标平移处理速度：> 300 万点/秒
+- 内存占用：平移过程中峰值 < 200MB
+
 ## 3. 非功能需求
 
 ### 3.1 性能需求
@@ -672,6 +833,36 @@
 3dgs-pp stat --all --plot --type box --output-dir ./charts scene.ply
 ```
 
+#### 4.2.7 translate - 坐标平移
+
+```bash
+3dgs-pp translate [--x VAL] [--y VAL] [--z VAL] [--all VAL] [--interactive] [--output FILE] <ply_file>
+```
+
+参数：
+- `--x VAL`：X 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`）
+- `--y VAL`：Y 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`）
+- `--z VAL`：Z 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`）
+- `--all VAL`：所有轴统一平移量，与 `--x/--y/--z` 互斥
+- `--interactive`：进入交互模式
+- `--output FILE`：输出文件路径（默认：`{原文件名}_translated.ply`）
+
+示例：
+```bash
+# 具体数值平移
+3dgs-pp translate --x 10 --y -5 scene.ply
+
+# 按统计量平移
+3dgs-pp translate --all mean scene.ply
+3dgs-pp translate --x mean --y median --z center scene.ply
+
+# 混合模式
+3dgs-pp translate --x 10 --y mean --z P50 scene.ply
+
+# 交互模式
+3dgs-pp translate --interactive scene.ply
+```
+
 ## 5. 技术架构
 
 ### 5.1 核心模块
@@ -690,14 +881,16 @@
 │   ├── split.py        # split 命令
 │   ├── stat.py         # stat 命令（终端 UI）
 │   ├── filter.py       # filter 命令（终端 UI）
-│   └── downsample.py   # downsample 命令
+│   ├── downsample.py   # downsample 命令
+│   └── translate.py    # translate 命令（终端 UI）
 ├── core/
 │   ├── __init__.py
 │   ├── bounds.py       # 包围盒计算
 │   ├── partition.py    # 空间分块
 │   ├── stats.py        # 统计分析
 │   ├── filter.py       # 高斯椭球过滤
-│   └── downsampler.py  # 下采样算法
+│   ├── downsampler.py  # 下采样算法
+│   └── translate.py    # 坐标平移
 └── main.py
 ```
 
@@ -802,6 +995,14 @@
 - [ ] 过滤输出文件格式正确，保留所有原始属性数据
 - [ ] 支持按比例和按数量两种方式指定下采样目标
 - [ ] 下采样输出文件格式正确，可被其他工具读取
+- [ ] 坐标平移功能正确应用具体数值平移
+- [ ] 坐标平移功能正确解析统计量关键字（`mean`/`median`/`center`/`P<N>`）
+- [ ] `--all` 统一平移量功能正确应用到各轴
+- [ ] `--x/--y/--z` 混合模式支持数值与统计量混合指定
+- [ ] 平移输出文件仅修改 x/y/z 坐标，其他属性保持不变
+- [ ] 平移输出文件的 PLY header 注释记录平移参数和实际平移量
+- [ ] 控制台输出平移前后的包围盒对比信息
+- [ ] 交互模式正确展示统计概览并支持平移预览
 
 ### 6.2 性能验收
 - [ ] 1000 万点文件元数据读取 < 1 秒
@@ -813,6 +1014,9 @@
 - [ ] 高斯椭球合并下采样速度 > 10 万点/秒
 - [ ] 单属性统计计算时间 < 5 秒（1 亿点文件）
 - [ ] 统计模式内存峰值 < 300MB（1 亿点文件）
+- [ ] 坐标平移统计量预计算 < 3 秒（1 亿点文件）
+- [ ] 坐标平移处理速度 > 300 万点/秒
+- [ ] 平移模式内存峰值 < 200MB（1 亿点文件）
 
 ## 7. 后续规划（可选）
 
