@@ -521,7 +521,7 @@
 
 ### 2.7 坐标平移
 
-**功能描述**：将 PLY 文件中所有高斯点的位置坐标（x, y, z）进行平移变换，支持指定具体数值或基于统计量（均值、中值、分位数、包围盒中心）自动计算平移量。
+**功能描述**：将 PLY 文件中所有高斯点的位置坐标（x, y, z）进行平移变换，支持指定具体数值或基于统计量（均值、中值、最小值、最大值、分位数、包围盒中心）自动计算平移量。
 
 **详细需求**：
 
@@ -545,6 +545,8 @@
 |--------|---------|------|
 | `mean` | 各轴坐标的算术平均值 | 将数据中心偏移至原点附近 |
 | `median` | 各轴坐标的中值（50% 分位数） | 对异常值更鲁棒的中心 |
+| `min` | 各轴坐标的最小值 | 将数据下边界平移至原点 |
+| `max` | 各轴坐标的最大值 | 将数据上边界平移至原点 |
 | `center` | `(min + max) / 2`，包围盒中心 | 基于空间范围的中心 |
 | `P<N>` | `<N>`% 分位数（如 `P10`、`P90`） | 按指定分位数计算偏移 |
 
@@ -572,9 +574,9 @@
 
 | 参数 | 说明 |
 |------|------|
-| `--x <val>` | X 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`） |
-| `--y <val>` | Y 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`） |
-| `--z <val>` | Z 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`） |
+| `--x <val>` | X 轴平移量（数值或 `min`/`max`/`mean`/`median`/`center`/`P<N>`） |
+| `--y <val>` | Y 轴平移量（数值或 `min`/`max`/`mean`/`median`/`center`/`P<N>`） |
+| `--z <val>` | Z 轴平移量（数值或 `min`/`max`/`mean`/`median`/`center`/`P<N>`） |
 | `--all <val>` | 所有轴统一平移量（数值或统计量关键字），与 `--x/--y/--z` 互斥 |
 | `--output FILE` | 输出文件路径（默认：`{原文件名}_translated.ply`） |
 
@@ -608,6 +610,12 @@
 
 # 按 Y 轴 10% 分位数平移，使 10% 的数据位于原点下方
 3dgs-pp translate --y P10 scene.ply
+
+# 按最小值平移，将各轴下边界对齐至原点
+3dgs-pp translate --all min scene.ply
+
+# 按最大值平移
+3dgs-pp translate --x min --y max scene.ply
 
 # 指定输出文件
 3dgs-pp translate --all mean --output centered.ply scene.ply
@@ -665,6 +673,8 @@ comment translate_z=center(25.678901)
 
 - `x` / `y` / `z`：切换到对应轴的设置
 - `+` / `-`：微调平移量
+- `n`：切换当前轴为 min
+- `x`：切换当前轴为 max（注意：与切换 X 轴同名，通过上下文区分）
 - `m`：切换当前轴为 mean
 - `d`：切换当前轴为 median
 - `c`：切换当前轴为 center
@@ -840,9 +850,9 @@ comment translate_z=center(25.678901)
 ```
 
 参数：
-- `--x VAL`：X 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`）
-- `--y VAL`：Y 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`）
-- `--z VAL`：Z 轴平移量（数值或 `mean`/`median`/`center`/`P<N>`）
+- `--x VAL`：X 轴平移量（数值或 `min`/`max`/`mean`/`median`/`center`/`P<N>`）
+- `--y VAL`：Y 轴平移量（数值或 `min`/`max`/`mean`/`median`/`center`/`P<N>`）
+- `--z VAL`：Z 轴平移量（数值或 `min`/`max`/`mean`/`median`/`center`/`P<N>`）
 - `--all VAL`：所有轴统一平移量，与 `--x/--y/--z` 互斥
 - `--interactive`：进入交互模式
 - `--output FILE`：输出文件路径（默认：`{原文件名}_translated.ply`）
@@ -996,7 +1006,7 @@ comment translate_z=center(25.678901)
 - [ ] 支持按比例和按数量两种方式指定下采样目标
 - [ ] 下采样输出文件格式正确，可被其他工具读取
 - [ ] 坐标平移功能正确应用具体数值平移
-- [ ] 坐标平移功能正确解析统计量关键字（`mean`/`median`/`center`/`P<N>`）
+- [ ] 坐标平移功能正确解析统计量关键字（`min`/`max`/`mean`/`median`/`center`/`P<N>`）
 - [ ] `--all` 统一平移量功能正确应用到各轴
 - [ ] `--x/--y/--z` 混合模式支持数值与统计量混合指定
 - [ ] 平移输出文件仅修改 x/y/z 坐标，其他属性保持不变

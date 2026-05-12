@@ -200,6 +200,10 @@ uv run 3dgs-pp translate --all mean scene.ply
 # 各轴分别使用统计量
 uv run 3dgs-pp translate --x mean --y median --z center scene.ply
 
+# 按最小/最大值平移
+uv run 3dgs-pp translate --all min scene.ply
+uv run 3dgs-pp translate --x min --y max scene.ply
+
 # 混合模式（数值 + 统计量）
 uv run 3dgs-pp translate --x 10 --y mean --z P50 scene.ply
 
@@ -215,6 +219,8 @@ uv run 3dgs-pp translate --interactive scene.ply
 | 方式 | 示例 | 说明 |
 |------|------|------|
 | 具体数值 | `--x 10` | 直接加上该数值 |
+| `min` | `--x min` | 减去该轴最小值（下边界对齐原点） |
+| `max` | `--x max` | 减去该轴最大值（上边界对齐原点） |
 | `mean` | `--x mean` | 减去该轴均值（数据中心化） |
 | `median` | `--x median` | 减去该轴中值 |
 | `center` | `--x center` | 减去包围盒中心 `(min+max)/2` |
@@ -229,6 +235,7 @@ uv run 3dgs-pp translate --interactive scene.ply
 
 **交互控制**：
 - `x` / `y` / `z`：切换操作轴
+- `<` / `>`：设为 min / max
 - `m` / `d` / `c`：设为 mean / median / center
 - `p`：输入百分比分位数
 - `n`：输入具体数值

@@ -22,11 +22,11 @@ class TranslatePlan:
 
 
 # Keywords that are not raw numbers
-STAT_KEYWORDS = {"mean", "median", "center"}
+STAT_KEYWORDS = {"min", "max", "mean", "median", "center"}
 
 
 def _is_stat_keyword(spec: str) -> bool:
-    """Check if a spec string is a stat keyword (mean/median/center/P<N>)"""
+    """Check if a spec string is a stat keyword (min/max/mean/median/center/P<N>)"""
     lower = spec.lower().strip()
     if lower in STAT_KEYWORDS:
         return True
@@ -42,9 +42,13 @@ def _resolve_offset(analyzer: StatsAnalyzer, axis: str, spec: str) -> Tuple[floa
     """
     lower = spec.lower().strip()
 
-    if lower in ("mean", "median", "center"):
+    if lower in ("min", "max", "mean", "median", "center"):
         col = analyzer.read_column(axis)
-        if lower == "mean":
+        if lower == "min":
+            val = float(np.min(col))
+        elif lower == "max":
+            val = float(np.max(col))
+        elif lower == "mean":
             val = float(np.mean(col))
         elif lower == "median":
             val = float(np.median(col))

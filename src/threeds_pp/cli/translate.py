@@ -219,7 +219,9 @@ def _run_interactive(console: Console, ply_file: str) -> int:
         console.print()
         console.print("[dim]Commands:[/dim]")
         console.print("  x/y/z  - Switch axis")
-        console.print("  m      - Set current axis to mean (center at origin)")
+        console.print("  <      - Set current axis to min (lower bound to origin)")
+        console.print("  >      - Set current axis to max (upper bound to origin)")
+        console.print("  m      - Set current axis to mean")
         console.print("  d      - Set current axis to median")
         console.print("  c      - Set current axis to center ((min+max)/2)")
         console.print("  p      - Enter percentile (e.g. 50)")
@@ -231,34 +233,44 @@ def _run_interactive(console: Console, ply_file: str) -> int:
         console.print()
 
         try:
-            cmd = console.input(f"[bold]{current}>>[/bold] ").strip().lower()
+            cmd = console.input(f"[bold]{current}>>[/bold] ").strip()
         except (KeyboardInterrupt, EOFError):
             console.print()
             return 0
 
-        if cmd == "q":
+        cmd_lower = cmd.lower()
+
+        if cmd_lower == "q":
             console.print("[yellow]Cancelled.[/yellow]")
             return 0
-        elif cmd in ("x", "y", "z"):
-            current = cmd
-        elif cmd == "r":
+        elif cmd_lower in ("x", "y", "z"):
+            current = cmd_lower
+        elif cmd == "<":
+            s = stats[current]
+            offsets[current] = -s.min_val
+            specs[current] = f"min({s.min_val:.6f})"
+        elif cmd == ">":
+            s = stats[current]
+            offsets[current] = -s.max_val
+            specs[current] = f"max({s.max_val:.6f})"
+        elif cmd_lower == "r":
             for axis in ("x", "y", "z"):
                 offsets[axis] = 0.0
                 specs[axis] = "0"
-        elif cmd == "m":
+        elif cmd_lower == "m":
             s = stats[current]
             offsets[current] = -s.mean
             specs[current] = f"mean({s.mean:.6f})"
-        elif cmd == "d":
+        elif cmd_lower == "d":
             s = stats[current]
             offsets[current] = -s.median
             specs[current] = f"median({s.median:.6f})"
-        elif cmd == "c":
+        elif cmd_lower == "c":
             s = stats[current]
             val = (s.min_val + s.max_val) / 2
             offsets[current] = -val
             specs[current] = f"center({val:.6f})"
-        elif cmd == "p":
+        elif cmd_lower == "p":
             try:
                 pct_str = console.input("  Percentile (e.g. 50): ").strip()
                 pct = int(pct_str)
