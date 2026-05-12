@@ -11,24 +11,14 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRe
 
 from ..core import StatsAnalyzer
 from ..core.translate import (
-    compute_plan,
+    _compute_stats_from_array,
+    _is_stat_keyword,
+    _load_axes,
+    _resolve_offset_from_array,
     parse_translate_spec,
     TranslatePlan,
     translate_ply,
 )
-
-
-def _get_bounds(analyzer: StatsAnalyzer):
-    """Return ((min_x, min_y, min_z), (max_x, max_y, max_z))"""
-    bounds = {}
-    for axis in ("x", "y", "z"):
-        col = analyzer.read_column(axis)
-        bounds[f"min_{axis}"] = float(np.min(col))
-        bounds[f"max_{axis}"] = float(np.max(col))
-    return (
-        (bounds["min_x"], bounds["min_y"], bounds["min_z"]),
-        (bounds["max_x"], bounds["max_y"], bounds["max_z"]),
-    )
 
 
 def run_translate(
@@ -77,12 +67,27 @@ def run_translate(
             console.print(f"[red]Error:[/red] Property '{axis}' not found in PLY file")
             return 1
 
+    # Load x/y/z columns once for all downstream use (offset resolution + bounds)
     console.print()
     console.print("[bold]Computing translation offsets...[/bold]")
-
-    # Compute plan
     try:
-        plan = compute_plan(analyzer, x_s, y_s, z_s)
+        axes = _load_axes(analyzer)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] Failed to read columns: {e}")
+        return 1
+
+    # Resolve offsets from in-memory arrays (no extra disk reads)
+    plan = TranslatePlan()
+    try:
+        for axis, spec in [("x", x_s), ("y", y_s), ("z", z_s)]:
+            if spec is not None and _is_stat_keyword(spec):
+                offset, desc = _resolve_offset_from_array(axes[axis], axis, spec)
+            elif spec is not None:
+                offset, desc = float(spec), spec
+            else:
+                offset, desc = 0.0, "0"
+            setattr(plan, f"{axis}_offset", offset)
+            setattr(plan, f"{axis}_spec", desc)
     except Exception as e:
         console.print(f"[red]Error:[/red] Failed to compute translation plan: {e}")
         return 1
@@ -101,20 +106,29 @@ def run_translate(
         title="Translation Plan",
     ))
 
-    # Compute bounds before
+    # Compute bounds from the already-loaded arrays (no extra disk reads)
     console.print()
-    console.print("[bold]Computing bounding box...[/bold]", end="\r")
-    try:
-        bmin, bmax = _get_bounds(analyzer)
-    except Exception as e:
-        console.print(f"[red]Error:[/red] Failed to compute bounds: {e}")
-        return 1
+    bmin = (float(np.min(axes["x"])), float(np.min(axes["y"])), float(np.min(axes["z"])))
+    bmax = (float(np.max(axes["x"])), float(np.max(axes["y"])), float(np.max(axes["z"])))
 
     console.print()
     console.print("[bold]Before translation:[/bold]")
     console.print(f"  X: [{bmin[0]:.6f}, {bmax[0]:.6f}]")
     console.print(f"  Y: [{bmin[1]:.6f}, {bmax[1]:.6f}]")
     console.print(f"  Z: [{bmin[2]:.6f}, {bmax[2]:.6f}]")
+
+    # After-translation bounds are just old bounds + offset (no need to re-read file)
+    bmin_new = (
+        bmin[0] + plan.x_offset,
+        bmin[1] + plan.y_offset,
+        bmin[2] + plan.z_offset,
+    )
+    bmax_new = (
+        bmax[0] + plan.x_offset,
+        bmax[1] + plan.y_offset,
+        bmax[2] + plan.z_offset,
+    )
+
     console.print()
 
     # Translate
@@ -136,20 +150,12 @@ def run_translate(
 
     elapsed = time.time() - t0
 
-    # Compute bounds after
-    try:
-        analyzer_out = StatsAnalyzer(output)
-        bmin_new, bmax_new = _get_bounds(analyzer_out)
-    except Exception:
-        bmin_new = bmax_new = None
-
     console.print()
-    if bmin_new is not None:
-        console.print("[bold]After translation:[/bold]")
-        console.print(f"  X: [{bmin_new[0]:.6f}, {bmax_new[0]:.6f}]")
-        console.print(f"  Y: [{bmin_new[1]:.6f}, {bmax_new[1]:.6f}]")
-        console.print(f"  Z: [{bmin_new[2]:.6f}, {bmax_new[2]:.6f}]")
-        console.print()
+    console.print("[bold]After translation:[/bold]")
+    console.print(f"  X: [{bmin_new[0]:.6f}, {bmax_new[0]:.6f}]")
+    console.print(f"  Y: [{bmin_new[1]:.6f}, {bmax_new[1]:.6f}]")
+    console.print(f"  Z: [{bmin_new[2]:.6f}, {bmax_new[2]:.6f}]")
+    console.print()
 
     console.print("[green]Success![/green]")
     console.print(f"  Points: {kept:,}")
@@ -175,10 +181,31 @@ def _run_interactive(console: Console, ply_file: str) -> int:
             console.print(f"[red]Error:[/red] Property '{axis}' not found in PLY file")
             return 1
 
-    # Compute stats for each axis
+    # Load x/y/z columns once — all stats computed from memory
+    console.print()
+    console.print("[bold]Loading coordinate data...[/bold]")
+    try:
+        axes = _load_axes(analyzer)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] Failed to read columns: {e}")
+        return 1
+
+    # Compute stats from in-memory arrays
     stats = {}
     for axis in ("x", "y", "z"):
-        stats[axis] = analyzer.compute_stats(axis)
+        stats[axis] = _compute_stats_from_array(axes[axis], axis)
+
+    # Compute bounds from arrays
+    bmin_orig = (
+        float(np.min(axes["x"])),
+        float(np.min(axes["y"])),
+        float(np.min(axes["z"])),
+    )
+    bmax_orig = (
+        float(np.max(axes["x"])),
+        float(np.max(axes["y"])),
+        float(np.max(axes["z"])),
+    )
 
     console.print()
     console.print("[bold cyan]Translate Interactive Mode[/bold cyan]")
@@ -199,8 +226,6 @@ def _run_interactive(console: Console, ply_file: str) -> int:
     offsets = {"x": 0.0, "y": 0.0, "z": 0.0}
     specs = {"x": "0", "y": "0", "z": "0"}
     current = "x"
-
-    bmin_orig, bmax_orig = _get_bounds(analyzer)
 
     while True:
         console.print("[bold]Current offsets:[/bold]")
@@ -254,9 +279,9 @@ def _run_interactive(console: Console, ply_file: str) -> int:
             offsets[current] = -s.max_val
             specs[current] = f"max({s.max_val:.6f})"
         elif cmd_lower == "r":
-            for axis in ("x", "y", "z"):
-                offsets[axis] = 0.0
-                specs[axis] = "0"
+            for ax in ("x", "y", "z"):
+                offsets[ax] = 0.0
+                specs[ax] = "0"
         elif cmd_lower == "m":
             s = stats[current]
             offsets[current] = -s.mean
@@ -274,8 +299,7 @@ def _run_interactive(console: Console, ply_file: str) -> int:
             try:
                 pct_str = console.input("  Percentile (e.g. 50): ").strip()
                 pct = int(pct_str)
-                col = analyzer.read_column(current)
-                val = float(np.percentile(col, pct))
+                val = float(np.percentile(axes[current], pct))
                 offsets[current] = -val
                 specs[current] = f"P{pct}({val:.6f})"
             except (ValueError, EOFError):
@@ -290,9 +314,9 @@ def _run_interactive(console: Console, ply_file: str) -> int:
         elif cmd == "a":
             target_offset = offsets[current]
             target_spec = specs[current]
-            for axis in ("x", "y", "z"):
-                offsets[axis] = target_offset
-                specs[axis] = target_spec
+            for ax in ("x", "y", "z"):
+                offsets[ax] = target_offset
+                specs[ax] = target_spec
         elif cmd == "":
             break
         else:
