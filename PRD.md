@@ -15,6 +15,7 @@
 - 支持按条件过滤高斯椭球，清理异常或不需要数据
 - 支持高斯椭球下采样，减少模型复杂度
 - 支持坐标平移变换，方便点云对齐和中心化
+- 支持轴变换（轴对换/镜像与 nπ/2 旋转），快速改变点云朝向
 
 ## 2. 功能需求
 
@@ -689,6 +690,233 @@ comment translate_z=center(25.678901)
 - 坐标平移处理速度：> 300 万点/秒
 - 内存占用：平移过程中峰值 < 200MB
 
+### 2.8 轴变换
+
+**功能描述**：对 PLY 文件中所有高斯点的位置坐标（x, y, z）进行轴变换，包括轴对换（镜像）和绕坐标轴 nπ/2 旋转。同时同步变换四元数（rot_0~rot_3）和缩放（scale_0~scale_2），确保高斯椭球朝向和形状与位置变换一致。
+
+**详细需求**：
+
+#### 2.8.1 变换类型
+
+**类型一：轴对换（镜像）**
+
+交换两个坐标轴，可选对各轴附加符号取反。本质是沿着指定平面做镜像反射。
+
+| 变换 | 符号 | 说明 |
+|------|------|------|
+| `(x,y)→(y,x)` | `swap xy` | 沿 x=y 平面镜像 |
+| `(x,y)→(-y,-x)` | `swap -xy` | 沿 x=-y 平面镜像 |
+| `(x,z)→(z,x)` | `swap xz` | 沿 x=z 平面镜像 |
+| `(x,z)→(-z,-x)` | `swap -xz` | 沿 x=-z 平面镜像 |
+| `(y,z)→(z,y)` | `swap yz` | 沿 y=z 平面镜像 |
+| `(y,z)→(-z,-y)` | `swap -yz` | 沿 y=-z 平面镜像 |
+
+**类型二：轴自反（镜像）**
+
+对单个坐标轴取反。本质是沿垂直于该轴的平面做镜像反射。
+
+| 变换 | 符号 | 说明 |
+|------|------|------|
+| `(x,y,z)→(-x,y,z)` | `inv x` | 沿 yz 平面镜像（x 轴自反） |
+| `(x,y,z)→(x,-y,z)` | `inv y` | 沿 xz 平面镜像（y 轴自反） |
+| `(x,y,z)→(x,y,-z)` | `inv z` | 沿 xy 平面镜像（z 轴自反） |
+
+**类型三：nπ/2 旋转**
+
+绕某一坐标轴旋转 n×90°（n=1,2,3），旋转方向遵循右手定则。
+
+| 变换 | 符号 | 说明 |
+|------|------|------|
+| `(x,y)→(y,-x)` | `rot z 90` | 绕 z 轴旋转 π/2（90°） |
+| `(x,y)→(-x,-y)` | `rot z 180` | 绕 z 轴旋转 π（180°） |
+| `(x,y)→(-y,x)` | `rot z 270` | 绕 z 轴旋转 3π/2（270°） |
+| `(x,z)→(z,-x)` | `rot y 90` | 绕 y 轴旋转 90° |
+| `(x,z)→(-x,-z)` | `rot y 180` | 绕 y 轴旋转 180° |
+| `(x,z)→(-z,x)` | `rot y 270` | 绕 y 轴旋转 270° |
+| `(y,z)→(z,-y)` | `rot x 90` | 绕 x 轴旋转 90° |
+| `(y,z)→(-y,-z)` | `rot x 180` | 绕 x 轴旋转 180° |
+| `(y,z)→(-z,y)` | `rot x 270` | 绕 x 轴旋转 270° |
+
+**通用表达式**
+
+对于上述预设符号无法覆盖的组合，支持使用通用映射表达式指定变换。语法为 `new_ax->±old_ax,...`，描述每个新坐标轴来自哪个旧坐标轴（可带符号）：
+
+```
+x->y,y->-x,z->z      # 等价于 rot z 90
+x->y,y->x,z->z        # 等价于 swap xy
+x->-y,y->-x,z->z      # 等价于 swap -xy
+x->-x,y->y,z->z       # 等价于 inv x
+```
+
+#### 2.8.2 四元数同步变换
+
+轴变换不仅是位置变化，还会改变坐标系的方向。因此必须同步变换高斯椭球的旋转四元数，确保椭球在空间中的朝向与变换后的坐标系一致。
+
+**简化实现**：将轴变换理解为坐标轴重标记。四元数 `rot_0 + rot_1·i + rot_2·j + rot_3·k` 中，实部 `rot_0`（标量 `w`）保持不变，虚部 `(rot_1, rot_2, rot_3)` 的变换规则与坐标 `(x, y, z)` 完全一致——直接对换数值或其符号。
+
+但镜像变换（轴对换、轴自反）还会翻转手性。仅做轴置换和符号翻转，四元数的旋转轴方向是对的，但旋转方向没有镜像。因此**在坐标变换之后，需要额外对四元数取共轭**（即虚部 `(rot_1, rot_2, rot_3)` 全部取反），以将旋转方向也做镜像。
+
+纯旋转（nπ/2）不翻转手性，不需要取共轭。
+
+**轴对换（镜像，需取共轭）：**
+| 变换 | 坐标 `(x,y,z)`→ | 四元数 `(w, rot_1, rot_2, rot_3)`→ |
+|------|----------------|-------------------------------------|
+| `swap xy` | `(y, x, z)` | `(w, -rot_2, -rot_1, -rot_3)` |
+| `swap -xy` | `(-y, -x, z)` | `(w, rot_2, rot_1, -rot_3)` |
+| `swap xz` | `(z, y, x)` | `(w, -rot_3, -rot_2, -rot_1)` |
+| `swap -xz` | `(-z, y, -x)` | `(w, rot_3, rot_2, -rot_1)` |
+| `swap yz` | `(x, z, y)` | `(w, -rot_1, -rot_3, -rot_2)` |
+| `swap -yz` | `(x, -z, -y)` | `(w, rot_1, rot_3, -rot_2)` |
+
+**轴自反（镜像，需取共轭）：**
+| 变换 | 坐标 `(x,y,z)`→ | 四元数 `(w, rot_1, rot_2, rot_3)`→ |
+|------|----------------|-------------------------------------|
+| `inv x` | `(-x, y, z)` | `(w, rot_1, -rot_2, -rot_3)` |
+| `inv y` | `(x, -y, z)` | `(w, -rot_1, rot_2, -rot_3)` |
+| `inv z` | `(x, y, -z)` | `(w, -rot_1, -rot_2, rot_3)` |
+
+**nπ/2 旋转（纯旋转，不取共轭）：**
+| 变换 | 坐标 `(x,y,z)`→ | 四元数 `(w, rot_1, rot_2, rot_3)`→ |
+|------|----------------|-------------------------------------|
+| `rot z 90` | `(y, -x, z)` | `(w, rot_2, -rot_1, rot_3)` |
+| `rot z 180` | `(-x, -y, z)` | `(w, -rot_1, -rot_2, rot_3)` |
+| `rot z 270` | `(-y, x, z)` | `(w, -rot_2, rot_1, rot_3)` |
+| `rot y 90` | `(z, y, -x)` | `(w, rot_3, rot_2, -rot_1)` |
+| `rot y 180` | `(-x, y, -z)` | `(w, -rot_1, rot_2, -rot_3)` |
+| `rot y 270` | `(-z, y, x)` | `(w, -rot_3, rot_2, rot_1)` |
+| `rot x 90` | `(x, z, -y)` | `(w, rot_1, rot_3, -rot_2)` |
+| `rot x 180` | `(x, -y, -z)` | `(w, rot_1, -rot_2, -rot_3)` |
+| `rot x 270` | `(x, -z, y)` | `(w, rot_1, -rot_3, rot_2)` |
+
+> **原理**：虚部 `(rot_1, rot_2, rot_3)` 分列在 x, y, z 轴上，其轴变换与坐标向量相同。镜像变换（det = -1）翻转手性，需额外取四元数共轭（虚部全取反）以镜像旋转方向；纯旋转（det = +1）不翻转手性，不需共轭。
+
+#### 2.8.3 缩放同步变换
+
+`scale_0`, `scale_1`, `scale_2` 对应三个轴向的高斯椭球大小（对数尺度），在轴变换时需要同步变换以确保椭球形状与变换后的坐标系一致。
+
+**变换规则**：与坐标 `(x, y, z)` 做相同的**轴置换**，但**不取符号**（scale 为大小，始终为正）。即 `scale_i` 的来源轴与坐标第 `i` 分量的来源轴相同，但不考虑符号取反。
+
+| 变换 | `scale_0/1/2`→ | 说明 |
+|------|----------------|------|
+| `inv x` | `(s0, s1, s2)` | 仅 x 取反，不涉及轴置换，scale 不变 |
+| `inv y` | `(s0, s1, s2)` | 仅 y 取反，不涉及轴置换，scale 不变 |
+| `inv z` | `(s0, s1, s2)` | 仅 z 取反，不涉及轴置换，scale 不变 |
+| `swap xy` | `(s1, s0, s2)` | x↔y 轴对换 |
+| `swap xz` | `(s2, s1, s0)` | x↔z 轴对换 |
+| `swap yz` | `(s0, s2, s1)` | y↔z 轴对换 |
+| `rot z 90` | `(s1, s0, s2)` | x 来自 y 轴，y 来自 x 轴 |
+| `rot y 90` | `(s2, s1, s0)` | x 来自 z 轴，z 来自 x 轴 |
+| `rot x 90` | `(s0, s2, s1)` | y 来自 z 轴，z 来自 y 轴 |
+
+> **原理**：scale 存储的是对数尺度，表示椭球在每个轴向上的大小，不带有方向信息。因此轴变换时只需做轴置换（scale_0/1/2 分别对应 x/y/z 轴），不需要考虑符号翻转。`inv` 类变换不改变轴之间的对应关系，scale 保持不变。
+
+#### 2.8.4 命令行接口
+
+```bash
+3dgs-pp transform [options] <ply_file>
+```
+
+参数：
+
+| 参数 | 说明 |
+|------|------|
+| `--swap AXES` | 轴对换（镜像），如 `xy`、`nxy`、`xz`、`nyz` 等（`n` 前缀表示负号） |
+| `--inv AXIS` | 轴自反（镜像），AXIS 为 `x`/`y`/`z`，如 `inv x` |
+| `--rot AXIS ANGLE` | 绕轴旋转，AXIS 为 `x`/`y`/`z`，ANGLE 为 `90`/`180`/`270` |
+| `--transform EXPR` | 通用映射表达式，如 `x->y,y->-x,z->z` |
+| `--interactive` | 进入交互模式 |
+| `--output FILE` | 输出文件路径（默认：`{原文件名}_transformed.ply`） |
+
+> `--swap`、`--inv`、`--rot`、`--transform` 四选一，不可同时指定。
+
+**使用示例**：
+
+```bash
+# 沿 x=y 平面镜像
+3dgs-pp transform --swap xy scene.ply
+
+# 沿 x=-y 平面镜像
+3dgs-pp transform --swap nxy scene.ply
+
+# 沿 yz 平面镜像（x 轴自反）
+3dgs-pp transform --inv x scene.ply
+
+# 沿 xy 平面镜像（z 轴自反）
+3dgs-pp transform --inv z scene.ply
+
+# 绕 z 轴旋转 90°
+3dgs-pp transform --rot z 90 scene.ply
+
+# 绕 z 轴旋转 180°
+3dgs-pp transform --rot z 180 scene.ply
+
+# 绕 x 轴旋转 270°
+3dgs-pp transform --rot x 270 scene.ply
+
+# 通用表达式：绕 z 轴旋转 90°
+3dgs-pp transform --transform "x->y,y->-x,z->z" scene.ply
+
+# 交互模式
+3dgs-pp transform --interactive scene.ply
+```
+
+#### 2.8.5 输出结果
+
+- 生成新的 PLY 文件，修改 x, y, z 坐标值、rot_0~rot_3 四元数、scale_0~scale_2 缩放，其他属性保持不变
+- 在 PLY header 的注释中记录变换参数：
+
+```
+comment transform=swap_xy
+comment transform_matrix=[[0,1,0],[1,0,0],[0,0,1]]
+```
+
+- 控制台输出变换前后的统计对比：
+
+```
+变换参数: swap xy (沿 x=y 平面镜像)
+
+变换前包围盒:
+  X: [-123.456, 156.789]
+  Y: [-89.012, 167.890]
+  Z: [0.123, 112.345]
+
+变换后包围盒:
+  X: [-89.012, 167.890]
+  Y: [-123.456, 156.789]
+  Z: [0.123, 112.345]
+
+总处理点数: 52,384,129
+处理时间: 1.56 秒
+输出文件: scene_transformed.ply
+```
+
+#### 2.8.6 交互模式
+
+```bash
+3dgs-pp transform --interactive scene.ply
+```
+
+**交互流程**：
+
+1. 展示当前点云的包围盒和各轴统计概览
+2. 选择变换类型（轴对换 / 旋转 / 通用表达式）
+3. 预览变换前后的包围盒变化
+4. 确认或调整变换参数
+5. 写入文件
+
+**交互控制**：
+
+- `s`：轴对换模式，选择轴对（xy/xz/yz）和符号（正/负）
+- `r`：旋转模式，选择旋转轴（x/y/z）和角度（90/180/270）
+- `t`：输入通用映射表达式
+- `Enter`：确认并写入文件
+- `q`：退出
+
+#### 2.8.7 性能要求
+
+- 变换处理速度：> 300 万点/秒
+- 内存占用：变换过程中峰值 < 200MB
+
 ## 3. 非功能需求
 
 ### 3.1 性能需求
@@ -873,6 +1101,49 @@ comment translate_z=center(25.678901)
 3dgs-pp translate --interactive scene.ply
 ```
 
+#### 4.2.8 transform - 轴变换
+
+```bash
+3dgs-pp transform [--swap AXES] [--rot AXIS ANGLE] [--transform EXPR] [--interactive] [--output FILE] <ply_file>
+```
+
+参数：
+- `--swap AXES`：轴对换（镜像），AXES 为 `xy`/`nxy`/`xz`/`nxz`/`yz`/`nyz`（`n` 前缀表示负号）
+- `--inv AXIS`：轴自反（镜像），AXIS 为 `x`/`y`/`z`
+- `--rot AXIS ANGLE`：绕坐标轴旋转，AXIS 为 `x`/`y`/`z`，ANGLE 为 `90`/`180`/`270`
+- `--transform EXPR`：通用映射表达式，如 `x->y,y->-x,z->z`
+- `--interactive`：进入交互模式
+- `--output FILE`：输出文件路径（默认：`{原文件名}_transformed.ply`）
+
+> `--swap`、`--inv`、`--rot`、`--transform` 四选一，不可同时指定。
+
+示例：
+```bash
+# 沿 x=y 平面镜像
+3dgs-pp transform --swap xy scene.ply
+
+# 沿 x=-y 平面镜像
+3dgs-pp transform --swap nxy scene.ply
+
+# 沿 yz 平面镜像（x 轴自反）
+3dgs-pp transform --inv x scene.ply
+
+# 绕 z 轴旋转 90°
+3dgs-pp transform --rot z 90 scene.ply
+
+# 绕 z 轴旋转 180°
+3dgs-pp transform --rot z 180 scene.ply
+
+# 绕 x 轴旋转 270°
+3dgs-pp transform --rot x 270 scene.ply
+
+# 通用表达式
+3dgs-pp transform --transform "x->y,y->-x,z->z" scene.ply
+
+# 交互模式
+3dgs-pp transform --interactive scene.ply
+```
+
 ## 5. 技术架构
 
 ### 5.1 核心模块
@@ -892,7 +1163,8 @@ comment translate_z=center(25.678901)
 │   ├── stat.py         # stat 命令（终端 UI）
 │   ├── filter.py       # filter 命令（终端 UI）
 │   ├── downsample.py   # downsample 命令
-│   └── translate.py    # translate 命令（终端 UI）
+│   ├── translate.py    # translate 命令（终端 UI）
+│   └── transform.py    # transform 命令（终端 UI）
 ├── core/
 │   ├── __init__.py
 │   ├── bounds.py       # 包围盒计算
@@ -900,7 +1172,8 @@ comment translate_z=center(25.678901)
 │   ├── stats.py        # 统计分析
 │   ├── filter.py       # 高斯椭球过滤
 │   ├── downsampler.py  # 下采样算法
-│   └── translate.py    # 坐标平移
+│   ├── translate.py    # 坐标平移
+│   └── transform.py    # 轴变换
 └── main.py
 ```
 
@@ -911,6 +1184,8 @@ comment translate_z=center(25.678901)
 3. **进度条**：使用 `tqdm` 库展示处理进度
 4. **统计分析**：使用 `numpy.percentile` 和 `numpy.mean/std` 高效计算，通过 `np.memmap` 避免全量加载
 5. **过滤引擎**：解析过滤表达式，支持数值和百分比分位数条件，通过布尔掩码实现多条件 OR/AND 组合
+7. **轴变换**：坐标与四元数均通过直接对换轴数值（或其负值）实现，无需通用矩阵乘法。`scale_0/1/2` 同步做轴置换但不取符号（size 为标量）。例如 `(x,y)→(-y,x)` 对应四元数 `(rot_0,rot_1,rot_2,rot_3)→(rot_0,-rot_1,rot_2,rot_3)`，`scale_0/1/2 → scale_1/0/2`。仅支持轴对换和 nπ/2 旋转，但速度极快。
+
 6. **下采样算法**：
    - 均匀采样：索引步进算法
    - 重要性采样：基于不透明度/体积的权重排序
@@ -1013,6 +1288,16 @@ comment translate_z=center(25.678901)
 - [ ] 平移输出文件的 PLY header 注释记录平移参数和实际平移量
 - [ ] 控制台输出平移前后的包围盒对比信息
 - [ ] 交互模式正确展示统计概览并支持平移预览
+- [ ] 轴变换 `--swap` 正确执行轴对换（镜像）变换
+- [ ] 轴变换 `--inv` 正确执行轴自反（镜像）变换
+- [ ] 轴变换 `--rot` 正确执行绕轴 nπ/2 旋转
+- [ ] 轴变换 `--transform` 正确解析通用映射表达式
+- [ ] 轴变换同步更新四元数（rot_0~rot_3），确保椭球朝向正确（镜像取共轭，纯旋转不取共轭）
+- [ ] 轴变换同步更新 scale_0/1/2，与坐标轴置换一致且不取符号
+- [ ] 轴变换输出文件仅修改 x/y/z 坐标、四元数和 scale_0/1/2，其他属性保持不变
+- [ ] 轴变换输出文件的 PLY header 注释记录变换参数和变换矩阵
+- [ ] 控制台输出变换前后的包围盒对比信息
+- [ ] 交互模式支持轴对换、旋转、通用表达式三种方式并支持预览
 
 ### 6.2 性能验收
 - [ ] 1000 万点文件元数据读取 < 1 秒
@@ -1027,6 +1312,8 @@ comment translate_z=center(25.678901)
 - [ ] 坐标平移统计量预计算 < 3 秒（1 亿点文件）
 - [ ] 坐标平移处理速度 > 300 万点/秒
 - [ ] 平移模式内存峰值 < 200MB（1 亿点文件）
+- [ ] 轴变换处理速度 > 300 万点/秒
+- [ ] 轴变换模式内存峰值 < 200MB（1 亿点文件）
 
 ## 7. 后续规划（可选）
 

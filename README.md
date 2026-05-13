@@ -11,6 +11,7 @@
 - **高斯椭球下采样**：支持多种采样方法（均匀、不透明度、随机、体素）
 - **属性统计分析**：支持统计、分布图绘制、快捷键切换查看
 - **坐标平移**：支持具体数值和统计量关键字，各轴独立或统一定义
+- **轴变换**：支持轴对换、轴自反、nπ/2 旋转，同步变换坐标、四元数和缩放
 
 ## 安装
 
@@ -244,6 +245,67 @@ uv run 3dgs-pp translate --interactive scene.ply
 - `Enter`：确认并写入文件
 - `q`：退出
 
+### 8. 轴变换 (`transform`)
+
+```bash
+# 轴对换（镜像）：沿 x=y 平面镜像
+uv run 3dgs-pp transform --swap xy scene.ply
+
+# 轴对换（镜像）：沿 x=-y 平面镜像
+uv run 3dgs-pp transform --swap nxy scene.ply
+
+# 轴自反（镜像）：沿 yz 平面镜像（x 取反）
+uv run 3dgs-pp transform --inv x scene.ply
+
+# 轴自反（镜像）：沿 xy 平面镜像（z 取反）
+uv run 3dgs-pp transform --inv z scene.ply
+
+# 绕 z 轴旋转 90°
+uv run 3dgs-pp transform --rot z 90 scene.ply
+
+# 绕 z 轴旋转 180°
+uv run 3dgs-pp transform --rot z 180 scene.ply
+
+# 绕 x 轴旋转 270°
+uv run 3dgs-pp transform --rot x 270 scene.ply
+
+# 通用映射表达式：等价于绕 z 轴旋转 90°
+uv run 3dgs-pp transform --transform "x->y,y->-x,z->z" scene.ply
+
+# 指定输出文件
+uv run 3dgs-pp transform --rot z 90 --output rotated.ply scene.ply
+
+# 交互模式
+uv run 3dgs-pp transform --interactive scene.ply
+```
+
+**变换类型**：
+
+| 参数 | 示例 | 说明 |
+|------|------|------|
+| `--swap AXES` | `xy`, `nxy`, `xz`, `nxz`, `yz`, `nyz` | 轴对换（镜像），`n` 前缀表示负号 |
+| `--inv AXIS` | `x`, `y`, `z` | 轴自反（镜像），单轴取反 |
+| `--rot AXIS ANGLE` | `z 90`, `y 180`, `x 270` | 绕轴 nπ/2 旋转（右手定则） |
+| `--transform EXPR` | `x->y,y->-x,z->z` | 通用映射表达式 |
+
+`--swap`、`--inv`、`--rot`、`--transform` 四选一，不可同时指定。
+
+**四元数同步变换**：坐标变换时，四元数虚部 `(rot_1, rot_2, rot_3)` 按相同规则变换。镜像变换（`--swap`、`--inv`）额外取四元数共轭以镜像旋转方向；纯旋转（`--rot`）不取共轭。`rot_0`（w）始终不变。
+
+**缩放同步变换**：`scale_0/1/2` 按坐标轴相同规则做轴置换，但不取符号（scale 为大小，始终为正）。
+
+**选项**：
+- `--output` / `-o`：输出文件路径（默认：`{原文件名}_transformed.ply`）
+- `--interactive` / `-i`：交互模式
+
+**交互控制**：
+- `s`：轴对换模式，选择轴对和符号
+- `v`：轴自反模式，选择单轴取反
+- `r`：旋转模式，选择旋转轴和角度
+- `t`：输入通用映射表达式
+- `Enter`：确认并写入文件
+- `q`：退出
+
 ## 生成测试数据
 
 ```bash
@@ -276,14 +338,16 @@ uv run python -m threeds_pp.test_util test_data/sample.ply 10000
 │   │   ├── stat.py         # stat 命令
 │   │   ├── filter.py       # filter 命令
 │   │   ├── downsample.py   # downsample 命令
-│   │   └── translate.py    # translate 命令
+│   │   ├── translate.py    # translate 命令
+│   │   └── transform.py    # transform 命令
 │   ├── core/
 │   │   ├── bounds.py       # 包围盒计算
 │   │   ├── partition.py    # 空间分块
 │   │   ├── stats.py        # 统计分析
 │   │   ├── filter.py       # 高斯椭球过滤
 │   │   ├── downsampler.py  # 下采样算法
-│   │   └── translate.py    # 坐标平移
+│   │   ├── translate.py    # 坐标平移
+│   │   └── transform.py    # 轴变换
 │   └── main.py
 ├── pyproject.toml
 └── README.md

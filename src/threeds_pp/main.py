@@ -2,7 +2,6 @@
 
 import argparse
 import sys
-from pathlib import Path
 
 from .cli.info import run_info
 from .cli.view import run_view
@@ -11,6 +10,7 @@ from .cli.downsample import run_downsample
 from .cli.stat import run_stat
 from .cli.filter import run_filter
 from .cli.translate import run_translate
+from .cli.transform import run_transform
 
 
 def main():
@@ -51,6 +51,12 @@ Examples:
   3dgs-pp translate --x 10 --y -5 scene.ply
   3dgs-pp translate --all mean scene.ply
   3dgs-pp translate --x mean --y median --z center scene.ply
+
+  # Axis transform (swap/invert/rotate)
+  3dgs-pp transform --swap xy scene.ply
+  3dgs-pp transform --inv x scene.ply
+  3dgs-pp transform --rot z 90 scene.ply
+  3dgs-pp transform --transform "x->y,y->-x,z->z" scene.ply
         """
     )
 
@@ -121,6 +127,20 @@ Examples:
     translate_parser.add_argument("--interactive", "-i", action="store_true",
                                   help="Enter interactive translate mode")
 
+    # Transform command
+    transform_parser = subparsers.add_parser("transform", help="Transform PLY axes (swap/rotate)")
+    transform_parser.add_argument("ply_file", help="Path to PLY file")
+    trans_group = transform_parser.add_mutually_exclusive_group()
+    trans_group.add_argument("--swap", help="Axis swap (mirror): xy, nxy, xz, nxz, yz, nyz ('n' = negative)")
+    trans_group.add_argument("--inv", choices=["x", "y", "z"],
+                             help="Axis inversion (mirror): x, y, or z")
+    trans_group.add_argument("--rot", nargs=2, metavar=("AXIS", "ANGLE"),
+                             help="Rotation: AXIS=x/y/z, ANGLE=90/180/270")
+    trans_group.add_argument("--transform", help="Generic expression, e.g. x->y,y->-x,z->z")
+    transform_parser.add_argument("--output", "-o", help="Output file path")
+    transform_parser.add_argument("--interactive", "-i", action="store_true",
+                                  help="Enter interactive transform mode")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -167,6 +187,16 @@ Examples:
             y=args.y,
             z=args.z,
             all_val=args.all_val,
+            output=args.output,
+            interactive=args.interactive,
+        )
+    elif args.command == "transform":
+        return run_transform(
+            args.ply_file,
+            swap=args.swap,
+            inv=args.inv,
+            rot=args.rot,
+            transform_expr=args.transform,
             output=args.output,
             interactive=args.interactive,
         )

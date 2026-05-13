@@ -6,6 +6,7 @@ from .downsampler import Downsampler, DownsampleResult
 from .stats import StatsAnalyzer, PropertyStats
 from .filter import DERIVED_PROPERTIES, FilterEngine, parse_filter_expression
 from .translate import TranslatePlan, compute_plan, translate_ply
+from .transform import TransformPlan, get_transform, transform_ply
 
 __all__ = [
     "Bounds",
@@ -20,4 +21,7 @@ __all__ = [
     "TranslatePlan",
     "compute_plan",
     "translate_ply",
+    "TransformPlan",
+    "get_transform",
+    "transform_ply",
 ]
