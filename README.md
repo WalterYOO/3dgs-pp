@@ -12,6 +12,8 @@
 - **属性统计分析**：支持统计、分布图绘制、快捷键切换查看
 - **坐标平移**：支持具体数值和统计量关键字，各轴独立或统一定义
 - **轴变换**：支持轴对换、轴自反、nπ/2 旋转，同步变换坐标、四元数和缩放
+- **空间裁剪**：按两点式（AABB）或八点式（凸六面体）裁剪点云，支持反向选择
+- **空间填充**：将源 PLY 的点填充到目标 PLY 的指定区域，支持偏移量对齐
 
 ## 安装
 
@@ -306,6 +308,67 @@ uv run 3dgs-pp transform --interactive scene.ply
 - `Enter`：确认并写入文件
 - `q`：退出
 
+### 9. 空间裁剪 (`crop`)
+
+```bash
+# 两点式（AABB）：裁剪出指定区域内的点
+uv run 3dgs-pp crop --p1 -10,-5,0 --p2 10,5,20 scene.ply
+
+# 两点式：保留区域外的点
+uv run 3dgs-pp crop --p1 -10,-5,0 --p2 10,5,20 --outside scene.ply
+
+# 八点式（凸六面体）：裁剪出不规则区域内的点
+uv run 3dgs-pp crop \
+  --p1 0,0,0 --p2 10,0,0 --p3 10,10,0 --p4 0,10,0 \
+  --p5 2,2,20 --p6 8,2,20 --p7 8,8,20 --p8 2,8,20 \
+  scene.ply
+
+# 指定输出文件
+uv run 3dgs-pp crop --p1 -10,-5,0 --p2 10,5,20 --output region.ply scene.ply
+```
+
+**区域指定方式**：
+
+| 方式 | 参数 | 说明 |
+|------|------|------|
+| 两点式 | `--p1 x,y,z --p2 x,y,z` | 轴对齐包围盒，p1 为最小角点，p2 为最大角点 |
+| 八点式 | `--p1~--p8 x,y,z` | 凸六面体，8 个顶点构成 6 个面 |
+
+**选项**：
+- `--p1`~`--p8`：区域顶点坐标，格式为 `x,y,z`
+- `--outside`：保留区域外的点（默认保留区域内的点）
+- `--output` / `-o`：输出文件路径（默认：`{原文件名}_cropped.ply`）
+
+### 10. 空间填充 (`fill`)
+
+```bash
+# 两点式：将 source.ply 填充到 target.ply 的 AABB 区域
+uv run 3dgs-pp fill --source source.ply --p1 -10,-5,0 --p2 10,5,20 target.ply
+
+# 带偏移量填充
+uv run 3dgs-pp fill --source source.ply --p1 -10,-5,0 --p2 10,5,20 --offset 5,0,0 target.ply
+
+# 八点式目标区域
+uv run 3dgs-pp fill \
+  --source source.ply \
+  --p1 0,0,0 --p2 10,0,0 --p3 10,10,0 --p4 0,10,0 \
+  --p5 2,2,20 --p6 8,2,20 --p7 8,8,20 --p8 2,8,20 \
+  target.ply
+```
+
+**填充流程**：
+1. 对源 PLY 的所有点坐标应用偏移量 `(dx, dy, dz)`
+2. 判断偏移后的点哪些落在目标区域内
+3. 仅保留落入目标区域内的源点，追加到目标 PLY 中
+
+**选项**：
+- `--source FILE`：源 PLY 文件路径（必需）
+- `--p1`~`--p8`：目标区域顶点坐标，格式为 `x,y,z`
+- `--offset dx,dy,dz`：相对偏移量（默认：`0,0,0`）
+- `--output` / `-o`：输出文件路径（默认：`{目标文件名}_filled.ply`）
+
+**注意**：源 PLY 和目标 PLY 必须具有相同的属性结构（相同的属性列表和数据类型），否则会报错。
+
 ## 生成测试数据
 
 ```bash
@@ -339,7 +402,9 @@ uv run python -m threeds_pp.test_util test_data/sample.ply 10000
 │   │   ├── filter.py       # filter 命令
 │   │   ├── downsample.py   # downsample 命令
 │   │   ├── translate.py    # translate 命令
-│   │   └── transform.py    # transform 命令
+│   │   ├── transform.py    # transform 命令
+│   │   ├── crop.py         # crop 命令
+│   │   └── fill.py         # fill 命令
 │   ├── core/
 │   │   ├── bounds.py       # 包围盒计算
 │   │   ├── partition.py    # 空间分块
@@ -347,7 +412,9 @@ uv run python -m threeds_pp.test_util test_data/sample.ply 10000
 │   │   ├── filter.py       # 高斯椭球过滤
 │   │   ├── downsampler.py  # 下采样算法
 │   │   ├── translate.py    # 坐标平移
-│   │   └── transform.py    # 轴变换
+│   │   ├── transform.py    # 轴变换
+│   │   ├── crop.py         # 空间裁剪
+│   │   └── fill.py         # 空间填充
 │   └── main.py
 ├── pyproject.toml
 └── README.md

@@ -11,6 +11,8 @@ from .cli.stat import run_stat
 from .cli.filter import run_filter
 from .cli.translate import run_translate
 from .cli.transform import run_transform
+from .cli.crop import run_crop
+from .cli.fill import run_fill
 
 
 def main():
@@ -57,6 +59,21 @@ Examples:
   3dgs-pp transform --inv x scene.ply
   3dgs-pp transform --rot z 90 scene.ply
   3dgs-pp transform --transform "x->y,y->-x,z->z" scene.ply
+
+  # Crop by spatial region (two-point AABB)
+  3dgs-pp crop --p1 -10,-5,0 --p2 10,5,20 scene.ply
+
+  # Crop by spatial region (eight-point hexahedron)
+  3dgs-pp crop --p1 0,0,0 --p2 10,0,0 --p3 10,10,0 --p4 0,10,0 --p5 2,2,20 --p6 8,2,20 --p7 8,8,20 --p8 2,8,20 scene.ply
+
+  # Crop outside region
+  3dgs-pp crop --p1 -10,-5,0 --p2 10,5,20 --outside scene.ply
+
+  # Fill source PLY into target region
+  3dgs-pp fill --source source.ply --p1 -10,-5,0 --p2 10,5,20 target.ply
+
+  # Fill with offset
+  3dgs-pp fill --source source.ply --p1 -10,-5,0 --p2 10,5,20 --offset 5,0,0 target.ply
         """
     )
 
@@ -141,6 +158,37 @@ Examples:
     transform_parser.add_argument("--interactive", "-i", action="store_true",
                                   help="Enter interactive transform mode")
 
+    # Crop command
+    crop_parser = subparsers.add_parser("crop", help="Crop points by spatial region")
+    crop_parser.add_argument("ply_file", help="Path to PLY file")
+    crop_parser.add_argument("--p1", required=True, help="Point 1 as 'x,y,z' (min corner for AABB, or vertex 1 for hexahedron)")
+    crop_parser.add_argument("--p2", help="Point 2 as 'x,y,z' (max corner for AABB, or vertex 2 for hexahedron)")
+    crop_parser.add_argument("--p3", help="Point 3 as 'x,y,z' (hexahedron mode)")
+    crop_parser.add_argument("--p4", help="Point 4 as 'x,y,z' (hexahedron mode)")
+    crop_parser.add_argument("--p5", help="Point 5 as 'x,y,z' (hexahedron mode)")
+    crop_parser.add_argument("--p6", help="Point 6 as 'x,y,z' (hexahedron mode)")
+    crop_parser.add_argument("--p7", help="Point 7 as 'x,y,z' (hexahedron mode)")
+    crop_parser.add_argument("--p8", help="Point 8 as 'x,y,z' (hexahedron mode)")
+    crop_parser.add_argument("--outside", action="store_true",
+                             help="Keep points outside the region (default: keep inside)")
+    crop_parser.add_argument("--output", "-o", help="Output file path")
+
+    # Fill command
+    fill_parser = subparsers.add_parser("fill", help="Fill source PLY points into target region")
+    fill_parser.add_argument("target_file", help="Path to target PLY file")
+    fill_parser.add_argument("--source", required=True, help="Path to source PLY file")
+    fill_parser.add_argument("--p1", required=True, help="Point 1 as 'x,y,z' (min corner for AABB, or vertex 1 for hexahedron)")
+    fill_parser.add_argument("--p2", help="Point 2 as 'x,y,z' (max corner for AABB, or vertex 2 for hexahedron)")
+    fill_parser.add_argument("--p3", help="Point 3 as 'x,y,z' (hexahedron mode)")
+    fill_parser.add_argument("--p4", help="Point 4 as 'x,y,z' (hexahedron mode)")
+    fill_parser.add_argument("--p5", help="Point 5 as 'x,y,z' (hexahedron mode)")
+    fill_parser.add_argument("--p6", help="Point 6 as 'x,y,z' (hexahedron mode)")
+    fill_parser.add_argument("--p7", help="Point 7 as 'x,y,z' (hexahedron mode)")
+    fill_parser.add_argument("--p8", help="Point 8 as 'x,y,z' (hexahedron mode)")
+    fill_parser.add_argument("--offset", default="0,0,0",
+                             help="Offset applied to source points as 'dx,dy,dz' (default: 0,0,0)")
+    fill_parser.add_argument("--output", "-o", help="Output file path")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -199,6 +247,35 @@ Examples:
             transform_expr=args.transform,
             output=args.output,
             interactive=args.interactive,
+        )
+    elif args.command == "crop":
+        return run_crop(
+            args.ply_file,
+            p1=args.p1,
+            p2=args.p2,
+            p3=args.p3,
+            p4=args.p4,
+            p5=args.p5,
+            p6=args.p6,
+            p7=args.p7,
+            p8=args.p8,
+            outside=args.outside,
+            output=args.output,
+        )
+    elif args.command == "fill":
+        return run_fill(
+            args.target_file,
+            source_file=args.source,
+            p1=args.p1,
+            p2=args.p2,
+            p3=args.p3,
+            p4=args.p4,
+            p5=args.p5,
+            p6=args.p6,
+            p7=args.p7,
+            p8=args.p8,
+            offset=args.offset,
+            output=args.output,
         )
 
     return 0

@@ -7,6 +7,8 @@ from .stats import StatsAnalyzer, PropertyStats
 from .filter import DERIVED_PROPERTIES, FilterEngine, parse_filter_expression
 from .translate import TranslatePlan, compute_plan, translate_ply
 from .transform import TransformPlan, get_transform, transform_ply
+from .crop import crop_ply, build_aabb_mask, build_hexahedron_mask
+from .fill import fill_ply
 
 __all__ = [
     "Bounds",
@@ -24,4 +26,8 @@ __all__ = [
     "TransformPlan",
     "get_transform",
     "transform_ply",
+    "crop_ply",
+    "build_aabb_mask",
+    "build_hexahedron_mask",
+    "fill_ply",
 ]
